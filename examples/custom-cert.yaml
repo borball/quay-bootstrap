@@ -1,0 +1,33 @@
+# Corporate hostname and certificate from files, pinned operator version.
+operator:
+  csv: quay-operator.v3.15.1
+
+registry:
+  hostname: registry.example.com
+  tls:
+    mode: custom
+    source:
+      file:
+        cert: ./certs/registry.example.com.crt
+        key: ./certs/registry.example.com.key
+        ca: ./certs/corp-ca.pem
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+  password: {from: env:QUAY_ADMIN_PASSWORD}
+
+organizations:
+  - name: platform
+    quotaGiB: 500
+    robots: [ci_push, ci_pull]
+    repositories:
+      - name: app1
+        permissions:
+          - {robot: ci_push, role: write}
+          - {robot: ci_pull, role: read}
+  - name: dockerhub
+    proxyCache:
+      upstream: docker.io
+      username: {from: env:DOCKERHUB_USER}
+      password: {from: env:DOCKERHUB_TOKEN}

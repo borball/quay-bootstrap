@@ -1,0 +1,131 @@
+# Full configuration reference. Every key is optional unless marked (required).
+# Secret-like values accept a literal or a reference:
+#   {from: env:VAR} | {from: file:./path} | {from: secret:<ns>/<name>/<key>} | {from: generate}
+
+operator:
+  # Leave channel and csv unset to install the newest version in the catalog.
+  channel: stable-3.15           # optional; derived from csv, or newest channel if both unset
+  csv: quay-operator.v3.15.1     # optional; "3.15.1" also accepted; unset = channel head
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  namespace: openshift-operators # AllNamespaces install (needed by the monitoring component);
+                                 # an existing quay-operator subscription elsewhere is reused instead
+  autoUpgrade: true              # unpinned re-runs move to the newest version; false keeps the installed one
+
+registry:
+  name: quay
+  namespace: quay-enterprise
+  hostname: registry.example.com # SERVER_HOSTNAME; unset = operator default <name>-quay-<ns>.<apps domain>
+  route:
+    managed: true                # false = bring your own Route / load balancer (TLS passthrough to <name>-quay-app)
+  tls:
+    mode: custom                 # ingress | custom | selfsigned
+    minValidDays: 30             # warn when the certificate expires sooner
+    source:                      # custom only: exactly one of file | secret | certManager
+      file:
+        cert: ./certs/fullchain.pem   # leaf first; intermediates appended from `ca` if missing
+        key: ./certs/tls.key
+        ca: ./certs/ca.pem            # omit for publicly trusted certificates
+      # secret: {namespace: quay-enterprise, name: quay-tls}   # kubernetes.io/tls, optional ca.crt
+      # certManager:
+      #   issuerKind: ClusterIssuer
+      #   issuerName: corp-ca
+      #   secretName: quay-quay-tls
+      #   duration: 8760h
+      #   renewBefore: 720h
+    selfsigned:
+      days: 365                  # server certificate lifetime (CA lives 10 years)
+    trust:
+      cluster: true              # add the private CA to image.config additionalTrustedCA (node pulls)
+    extraCAs:                    # CAs Quay itself must trust (upstream registries, LDAP, S3)
+      - name: corp-root
+        cert: {from: file:./certs/corp-root.pem}
+  components:                    # managed flags; objectstorage/route/tls are derived from other settings
+    clair: true
+    clairpostgres: true
+    postgres: true
+    redis: true
+    horizontalpodautoscaler: true
+    monitoring: true
+    mirror: false
+    quay: true
+  extraConfig:                   # merged into config.yaml (wins over generated values)
+    FEATURE_USER_CREATION: false
+    TAG_EXPIRATION_OPTIONS: [2w, 4w, 12w]
+
+storage:
+  odfNamespace: openshift-storage
+  object:                        # unset = managed (NooBaa) if Ready, else OBC on the RGW StorageClass
+    type: obc                    # managed | obc | s3
+    storageClass: openshift-storage.noobaa.io   # obc only
+    # s3:                        # s3 only
+    #   driver: S3Storage        # S3Storage | RadosGWStorage | RHOCSStorage
+    #   hostname: s3.example.com
+    #   port: 443
+    #   secure: true
+    #   bucket: quay
+    #   region: us-east-1
+    #   path: /datastorage/registry
+    #   accessKey: {from: env:S3_ACCESS_KEY}
+    #   secretKey: {from: env:S3_SECRET_KEY}
+    #   ca: {from: file:./certs/s3-ca.pem}
+  block:
+    storageClass: ocs-storagecluster-ceph-rbd   # used only if the cluster has no default StorageClass
+    setDefaultIfMissing: true
+    postgresVolumeSize: 100Gi
+    clairPostgresVolumeSize: 50Gi
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+  password: {from: generate}     # reused from outputSecret on re-runs
+  # token: {from: env:QUAY_TOKEN}  # only needed if Quay already had users before this tool ran
+  outputSecret: quay-bootstrap-creds
+
+organizations:
+  - name: platform
+    email: platform@example.com
+    quotaGiB: 500
+    robots:
+      - ci_push
+      - {name: ci_pull, description: read-only pulls for clusters}
+    teams:
+      - name: developers
+        role: member             # member | creator | admin
+        members:
+          - {robot: ci_push}
+          - {user: quayadmin}
+    repositories:
+      - name: app1
+        visibility: private      # private | public
+        description: Application 1
+        permissions:
+          - {robot: ci_push, role: write}   # read | write | admin
+          - {robot: ci_pull, role: read}
+          - {team: developers, role: read}
+
+  # Proxy cache applies to a whole organization. Narrow the upstream path to cache a subset.
+  - name: dockerhub
+    quotaGiB: 200
+    proxyCache:
+      upstream: docker.io        # e.g. docker.io/library, quay.io/prometheus
+      username: {from: env:DOCKERHUB_USER}
+      password: {from: env:DOCKERHUB_TOKEN}
+      expirationSeconds: 86400
+      insecure: false
+    robots: [puller]
+    teams:
+      - name: readers
+        members: [{robot: puller}]
+
+security:
+  # After the admin token exists, set FEATURE_USER_INITIALIZATION=false and
+  # BROWSER_API_CALLS_XHR_ONLY=true (costs one extra Quay rollout on the first run).
+  hardenAfterBootstrap: false
+
+api:
+  insecure: false                # skip TLS verification for API calls (last resort)
+
+timeouts:
+  operator: 900
+  registry: 1800

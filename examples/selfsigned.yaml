@@ -1,0 +1,22 @@
+# Lab setup: self-signed CA and certificate, CA added to cluster trust for node pulls.
+registry:
+  hostname: quay.lab.example.com
+  tls:
+    mode: selfsigned
+    trust:
+      cluster: true
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+
+organizations:
+  - name: lab
+    robots: [builder]
+    repositories:
+      - {name: demo, visibility: public, permissions: [{robot: builder, role: write}]}
+  - name: redhat-cache
+    proxyCache:
+      upstream: registry.redhat.io
+      username: {from: env:RH_REGISTRY_USER}
+      password: {from: env:RH_REGISTRY_TOKEN}

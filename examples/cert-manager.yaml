@@ -1,0 +1,23 @@
+# Certificate issued by cert-manager; object storage from an ObjectBucketClaim on NooBaa.
+registry:
+  hostname: registry.example.com
+  tls:
+    mode: custom
+    source:
+      certManager:
+        issuerKind: ClusterIssuer
+        issuerName: corp-ca
+
+storage:
+  object:
+    type: obc
+    storageClass: openshift-storage.noobaa.io
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+
+organizations:
+  - name: platform
+    repositories:
+      - name: app1
