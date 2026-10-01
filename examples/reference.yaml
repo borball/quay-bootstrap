@@ -15,7 +15,7 @@ operator:
 registry:
   name: quay
   namespace: quay-enterprise
-  hostname: registry.example.com # SERVER_HOSTNAME; unset = operator default <name>-quay-<ns>.<apps domain>
+  hostname: registry.example.com # SERVER_HOSTNAME; a bare label (e.g. quay) becomes <label>.<apps domain>; unset = operator default <name>-quay-<ns>.<apps domain>
   route:
     managed: true                # false = bring your own Route / load balancer (TLS passthrough to <name>-quay-app)
   tls:

@@ -1,0 +1,26 @@
+# Registry for Image Based Install (IBI): a repository that holds the seed images.
+# The seed cluster pushes with `ibi_push`; target hosts / the installer pull with `ibi_pull`.
+registry:
+  hostname: quay                         # bare label -> quay.<apps domain>, domain read from the cluster
+  tls:
+    mode: ingress                        # edge route, served with the OCP default ingress certificate
+    trust:
+      cluster: true                      # add the ingress CA to image.config additionalTrustedCA (skipped if publicly trusted)
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+
+organizations:
+  - name: ibi
+    quotaGiB: 100                # seed images are large (tens of GiB each)
+    robots:
+      - {name: ibi_push, description: pushes seed images from the seed cluster}
+      - {name: ibi_pull, description: pulls seed images on IBI target hosts}
+    repositories:
+      - name: images              # -> <hostname>/ibi/images:<tag>
+        visibility: private
+        description: IBI seed images
+        permissions:
+          - {robot: ibi_push, role: write}
+          - {robot: ibi_pull, role: read}

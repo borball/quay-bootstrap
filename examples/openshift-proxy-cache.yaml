@@ -1,0 +1,52 @@
+# Pull-through cache for SNO clusters running Cloud RAN operators (PTP, SR-IOV, FEC/ACC100, ...).
+# Proxy cache is per organization (one upstream each), so the orgs are grouped by upstream registry.
+# The upstream path follows the org name in the mirror, e.g.
+#   registry.redhat.io/openshift4        -> quay.<apps domain>/redhat-io/openshift4
+#   registry.connect.redhat.com/intel    -> quay.<apps domain>/redhat-connect/intel
+#   quay.io/openshift-release-dev        -> quay.<apps domain>/quay-io/openshift-release-dev
+#   export RH_REGISTRY_USER=... RH_REGISTRY_TOKEN=...   (registry.redhat.io service account)
+registry:
+  hostname: quay                         # -> quay.<apps domain>
+  tls:
+    mode: ingress
+    trust:
+      cluster: true
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+
+organizations:
+  - name: quay-io
+    quotaGiB: 200
+    proxyCache:
+      upstream: quay.io
+      expirationSeconds: 0
+    robots: [sno_pull]
+    teams:
+      - name: readers
+        members: [{robot: sno_pull}]
+
+  - name: redhat-io
+    quotaGiB: 300
+    proxyCache:
+      upstream: registry.redhat.io
+      username: {from: env:RH_REGISTRY_USER}
+      password: {from: env:RH_REGISTRY_TOKEN}
+      expirationSeconds: 0
+    robots: [sno_pull]
+    teams:
+      - name: readers
+        members: [{robot: sno_pull}]
+
+  - name: redhat-connect
+    quotaGiB: 50
+    proxyCache:
+      upstream: registry.connect.redhat.com
+      username: {from: env:RH_REGISTRY_USER}
+      password: {from: env:RH_REGISTRY_TOKEN}
+      expirationSeconds: 0
+    robots: [sno_pull]
+    teams:
+      - name: readers
+        members: [{robot: sno_pull}]

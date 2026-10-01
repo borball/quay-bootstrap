@@ -180,6 +180,8 @@ preflight() {
   preflight_cluster
   validate_config
   APPS_DOMAIN=$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')
+  # A bare label (no dot) means "<label>.<apps domain>".
+  if [[ -n $QUAY_HOST && $QUAY_HOST != *.* ]]; then QUAY_HOST="$QUAY_HOST.$APPS_DOMAIN"; fi
   detect_subscription
 
   # Only check what the selected phases need (e.g. --phase content must not fail on storage).
