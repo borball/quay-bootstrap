@@ -105,7 +105,7 @@ organizations:
           - {team: developers, role: read}
 
   # Proxy cache applies to a whole organization. Narrow the upstream path to cache a subset.
-  - name: dockerhub
+  - name: docker-io
     quotaGiB: 200
     proxyCache:
       upstream: docker.io        # e.g. docker.io/library, quay.io/prometheus

@@ -18,7 +18,7 @@ organizations:
       - {name: ibi_push, description: pushes seed images from the seed cluster}
       - {name: ibi_pull, description: pulls seed images on IBI target hosts}
     repositories:
-      - name: images              # -> <hostname>/ibi/images:<tag>
+      - name: images             # -> <hostname>/ibi/images:<tag>
         visibility: private
         description: IBI seed images
         permissions:

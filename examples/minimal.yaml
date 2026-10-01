@@ -1,6 +1,6 @@
 # Latest operator, ingress wildcard certificate, NooBaa-managed storage, generated admin password.
 registry:
-  hostname: quay.apps.ocp1.example.com   # optional; must be <label>.<apps domain> in ingress mode
+  hostname: quay                         # optional; bare label -> quay.<apps domain>
 
 admin:
   username: quayadmin
@@ -13,6 +13,6 @@ organizations:
       - name: app1
         permissions:
           - {robot: ci_push, role: write}
-  - name: quayio
+  - name: quay-io
     proxyCache:
       upstream: quay.io

@@ -26,7 +26,7 @@ organizations:
         permissions:
           - {robot: ci_push, role: write}
           - {robot: ci_pull, role: read}
-  - name: dockerhub
+  - name: docker-io
     proxyCache:
       upstream: docker.io
       username: {from: env:DOCKERHUB_USER}

@@ -12,10 +12,10 @@ admin:
 
 organizations:
   - name: lab
-    robots: [builder]
+    robots: [ci_push]
     repositories:
-      - {name: demo, visibility: public, permissions: [{robot: builder, role: write}]}
-  - name: redhat-cache
+      - {name: demo, visibility: public, permissions: [{robot: ci_push, role: write}]}
+  - name: redhat-io
     proxyCache:
       upstream: registry.redhat.io
       username: {from: env:RH_REGISTRY_USER}
