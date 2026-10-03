@@ -85,7 +85,6 @@ admin:
 organizations:
   - name: platform
     email: platform@example.com
-    quotaGiB: 500
     robots:
       - ci_push
       - {name: ci_pull, description: read-only pulls for clusters}
@@ -106,7 +105,6 @@ organizations:
 
   # Proxy cache applies to a whole organization. Narrow the upstream path to cache a subset.
   - name: docker-io
-    quotaGiB: 200
     proxyCache:
       upstream: docker.io        # e.g. docker.io/library, quay.io/prometheus
       username: {from: env:DOCKERHUB_USER}
@@ -119,7 +117,7 @@ organizations:
         members: [{robot: puller}]
 
 security:
-  # After the admin token exists, set FEATURE_USER_INITIALIZATION=false and
+  # After the admin token exists, set FEATURE_USER_INITIALIZE=false and
   # BROWSER_API_CALLS_XHR_ONLY=true (costs one extra Quay rollout on the first run).
   hardenAfterBootstrap: false
 

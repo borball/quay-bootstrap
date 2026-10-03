@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Content phase: organizations, quotas, robots, teams, repositories, permissions, proxy cache.
+# Content phase: organizations, robots, teams, repositories, permissions, proxy cache.
 # Every step reads current state first, so re-running only applies differences.
 
 reconcile_content() {
@@ -33,30 +33,10 @@ reconcile_org() {
       ;;
     *) die "GET organization $org failed (HTTP $API_STATUS): $(api_error)" ;;
   esac
-  reconcile_quota "$p" "$org"
   reconcile_robots "$p" "$org"
   reconcile_teams "$p" "$org"
   reconcile_repos "$p" "$org"
   reconcile_proxy_cache "$p" "$org"
-}
-
-reconcile_quota() {
-  local p=$1 org=$2 gib bytes id='' current=''
-  gib=$(cfg "$p.quotaGiB")
-  [[ -n $gib ]] || return 0
-  bytes=$((gib * 1024 * 1024 * 1024))
-  api GET "/api/v1/organization/$org/quota"
-  if [[ $API_STATUS == 200 ]]; then
-    id=$(jq -r '.[0].id // empty' <<<"$API_BODY")
-    current=$(jq -r '.[0].limit_bytes // empty' <<<"$API_BODY")
-  fi
-  if [[ -z $id ]]; then
-    api_expect "200 201" POST "/api/v1/organization/$org/quota" "{\"limit_bytes\": $bytes}"
-    log "  quota set to ${gib}GiB"
-  elif [[ $current != "$bytes" ]]; then
-    api_expect "200 201" PUT "/api/v1/organization/$org/quota/$id" "{\"limit_bytes\": $bytes}"
-    log "  quota updated to ${gib}GiB"
-  fi
 }
 
 reconcile_robots() {

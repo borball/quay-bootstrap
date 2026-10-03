@@ -19,7 +19,6 @@ admin:
 
 organizations:
   - name: platform
-    quotaGiB: 500
     robots: [ci_push, ci_pull]
     repositories:
       - name: app1

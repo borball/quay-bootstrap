@@ -13,7 +13,6 @@ admin:
 
 organizations:
   - name: ibi
-    quotaGiB: 100                # seed images are large (tens of GiB each)
     robots:
       - {name: ibi_push, description: pushes seed images from the seed cluster}
       - {name: ibi_pull, description: pulls seed images on IBI target hosts}

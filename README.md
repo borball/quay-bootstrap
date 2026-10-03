@@ -5,7 +5,7 @@ Bootstraps Red Hat Quay on an OpenShift cluster with ODF from a single YAML file
 1. **operator**: installs `quay-operator` pinned to a version (newest in the catalog if none given), with manual install-plan approval so OLM never upgrades on its own.
 2. **registry**: builds the config bundle (TLS, storage, feature flags), creates the `QuayRegistry`, waits until it is available, and optionally adds the registry CA to cluster trust.
 3. **init**: creates the first superuser through `/api/v1/user/initialize` and stores its password and OAuth token in a Secret.
-4. **content**: creates organizations, quotas, robot accounts, teams, repositories, permissions and proxy-cache settings.
+4. **content**: creates organizations, robot accounts, teams, repositories, permissions and proxy-cache settings.
 
 Every phase is idempotent: re-running applies only differences.
 
