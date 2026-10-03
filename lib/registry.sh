@@ -48,20 +48,16 @@ build_config_yaml() {
   # With security.hardenAfterBootstrap, both are switched back off once the admin token exists.
   HARDENED=false
   if harden_wanted && admin_initialized; then
-    yq -i '.FEATURE_USER_INITIALIZATION = false | .BROWSER_API_CALLS_XHR_ONLY = true' "$base"
+    yq -i '.FEATURE_USER_INITIALIZE = false | .BROWSER_API_CALLS_XHR_ONLY = true' "$base"
     HARDENED=true
     log "config: first-user initialization disabled (security.hardenAfterBootstrap)"
   else
-    yq -i '.FEATURE_USER_INITIALIZATION = true | .BROWSER_API_CALLS_XHR_ONLY = false' "$base"
+    yq -i '.FEATURE_USER_INITIALIZE = true | .BROWSER_API_CALLS_XHR_ONLY = false' "$base"
   fi
   [[ -z $QUAY_HOST ]] || QUAY_HOST=$QUAY_HOST yq -i '.SERVER_HOSTNAME = strenv(QUAY_HOST)' "$base"
   if [[ $(yq e '[.organizations[] | select(.proxyCache != null)] | length' "$CONFIG") != 0 ]]; then
     yq -i '.FEATURE_PROXY_CACHE = true' "$base"
   fi
-  if [[ $(yq e '[.organizations[] | select(.quotaGiB != null)] | length' "$CONFIG") != 0 ]]; then
-    yq -i '.FEATURE_QUOTA_MANAGEMENT = true' "$base"
-  fi
-
   # extraConfig wins, except that the admin always stays a superuser.
   yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' "$base" "$extra" >"$out"
   ADMIN_USER=$ADMIN_USER yq -i '.SUPER_USERS = (((.SUPER_USERS // []) + [strenv(ADMIN_USER)]) | unique)' "$out"

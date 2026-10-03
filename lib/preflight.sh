@@ -81,9 +81,6 @@ validate_config() {
     [[ $org != "$ADMIN_USER" ]] || die "organization '$org' collides with the admin username"
     seen="$seen$org "
 
-    local q; q=$(cfg "$p.quotaGiB")
-    [[ -z $q || $q =~ ^[0-9]+$ ]] || die "$p.quotaGiB must be an integer"
-
     if cfg_has "$p.proxyCache"; then
       [[ $(cfg_len "$p.repositories") == 0 ]] \
         || die "organization '$org' is a proxy-cache org and cannot also define repositories (proxy cache is per organization)"

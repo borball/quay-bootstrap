@@ -19,7 +19,7 @@ Phases (run in order; preflight always runs):
   operator   install the Quay operator (pinned CSV, manual install-plan approval)
   registry   config bundle, TLS, object storage, QuayRegistry; wait until available
   init       create the first superuser and its API token (stored in a secret)
-  content    organizations, quotas, robots, teams, repositories, permissions, proxy cache
+  content    organizations, robots, teams, repositories, permissions, proxy cache
 
 Options:
   -c, --config FILE     configuration file (required)

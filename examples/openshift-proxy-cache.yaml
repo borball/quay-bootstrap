@@ -18,7 +18,6 @@ admin:
 
 organizations:
   - name: quay-io
-    quotaGiB: 200
     proxyCache:
       upstream: quay.io
       expirationSeconds: 0
@@ -28,7 +27,6 @@ organizations:
         members: [{robot: sno_pull}]
 
   - name: redhat-io
-    quotaGiB: 300
     proxyCache:
       upstream: registry.redhat.io
       username: {from: env:RH_REGISTRY_USER}
@@ -40,7 +38,6 @@ organizations:
         members: [{robot: sno_pull}]
 
   - name: redhat-connect
-    quotaGiB: 50
     proxyCache:
       upstream: registry.connect.redhat.com
       username: {from: env:RH_REGISTRY_USER}
