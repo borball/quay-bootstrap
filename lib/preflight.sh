@@ -21,6 +21,7 @@ load_config() {
   QB_NS=$(cfg .registry.namespace quay-enterprise)
   QUAY_HOST=$(cfg .registry.hostname)
   ROUTE_MANAGED=$(cfg .registry.route.managed true)
+  REGISTRY_EXTERNAL=$(cfg .registry.external false)
   TLS_MODE=$(cfg .registry.tls.mode ingress)
   MIN_VALID_DAYS=$(cfg .registry.tls.minValidDays 30)
   CONFIG_SECRET="${QB_NAME}-config-bundle"
@@ -37,9 +38,14 @@ load_config() {
 
 validate_config() {
   local b
-  for b in "$ROUTE_MANAGED" "$API_INSECURE"; do
+  for b in "$ROUTE_MANAGED" "$REGISTRY_EXTERNAL" "$API_INSECURE"; do
     [[ $b == true || $b == false ]] || die "boolean expected, got '$b'"
   done
+  # An external registry is one this tool was pointed at, not one it installed:
+  # the operator and registry phases would change it, so they are refused.
+  if [[ $REGISTRY_EXTERNAL == true ]] && { phase_enabled operator || phase_enabled registry; }; then
+    die "registry.external is true: run only the init and content phases (the operator and registry phases change the Quay installation)"
+  fi
   [[ $OPERATOR_TIMEOUT =~ ^[0-9]+$ && $REGISTRY_TIMEOUT =~ ^[0-9]+$ && $MIN_VALID_DAYS =~ ^[0-9]+$ ]] \
     || die "timeouts and registry.tls.minValidDays must be integers"
   [[ $ADMIN_USER =~ $NAME_RE ]] || die "admin.username '$ADMIN_USER' is not a valid Quay username"

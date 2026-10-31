@@ -3,6 +3,13 @@
 
 registry_exists() { oc get quayregistries.quay.redhat.com "$QB_NAME" -n "$QB_NS" >/dev/null 2>&1; }
 
+# True when the QuayRegistry carries this tool's managed-by label, that is, when
+# we installed it and may therefore delete it.
+registry_managed() {
+  [[ $(oc get quayregistries.quay.redhat.com "$QB_NAME" -n "$QB_NS" \
+    -o jsonpath="{.metadata.labels.app\.kubernetes\.io/managed-by}" 2>/dev/null) == "$MANAGED_BY_VALUE" ]]
+}
+
 registry_available() {
   [[ $(oc get quayregistries.quay.redhat.com "$QB_NAME" -n "$QB_NS" \
     -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null) == True ]]

@@ -75,6 +75,31 @@ See [`examples/reference.yaml`](examples/reference.yaml) for every option.
   3. `s3`: explicit endpoint and credentials (`S3Storage`, `RadosGWStorage` or `RHOCSStorage`).
 - **Block storage** (managed postgres / clair-postgres PVCs) uses the cluster's default StorageClass; the operator has no per-component StorageClass setting. If no default exists, `storage.block.storageClass`, then `ocs-storagecluster-ceph-rbd`, then the first StorageClass is marked default (`setDefaultIfMissing: true`). Volume sizes are set with `postgresVolumeSize` / `clairPostgresVolumeSize`.
 
+## An existing registry
+
+Set `registry.external: true` when the QuayRegistry already exists and this tool
+only manages what lives inside it:
+
+```yaml
+registry:
+  name: proxy              # the existing QuayRegistry, in registry.namespace
+  namespace: registry
+  external: true
+  tls: {mode: ingress}     # ingress reads the CA from default-ingress-cert
+admin:
+  token: {from: env:QUAY_TOKEN}
+organizations:
+  - name: platform
+```
+
+- Only the `init` and `content` phases may run; the `operator` and `registry`
+  phases change the installation, so they are refused.
+- `registry.hostname` is optional: the endpoint is read from the QuayRegistry's
+  `status.registryEndpoint`.
+- `--destroy` refuses to run against an external registry.
+- The content phase still needs a few cluster permissions; see
+  [Requirements](#requirements).
+
 ## Organizations and proxy cache
 
 - Proxy cache is configured **per organization**. To cache only part of an upstream, narrow the upstream path (`docker.io/library`, `quay.io/prometheus`) and give it its own organization. A proxy-cache organization cannot also define repositories; the config is rejected.
