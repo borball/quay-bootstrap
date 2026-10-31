@@ -94,6 +94,10 @@ organizations:
         members:
           - {robot: ci_push}
           - {user: quayadmin}
+          # A robot owned by another organization; either form works. One pull
+          # robot can read from several organizations this way.
+          - {robot: "shared-registry+cluster_pull"}
+          - {robot: {org: shared-registry, name: cluster_pull}}
     repositories:
       - name: app1
         visibility: private      # private | public

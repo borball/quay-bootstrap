@@ -3,6 +3,8 @@
 
 NAME_RE='^[a-z0-9]+([._-][a-z0-9]+)*$'
 ROBOT_RE='^[a-z][a-z0-9_]{1,254}$'
+# A robot owned by another organization is written "<org>+<robot>".
+ROBOT_QUALIFIED_RE='^([a-z0-9]+([._-][a-z0-9]+)*\+)?[a-z][a-z0-9_]{1,254}$'
 TEAM_RE='^[a-z][a-z0-9]+$'
 COMPONENT_KINDS="clair clairpostgres postgres redis objectstorage route tls horizontalpodautoscaler mirror monitoring quay"
 
@@ -143,7 +145,7 @@ robot_name() { # robots may be plain strings or {name, description}
 }
 
 validate_principal() { # validate_principal <path> <allowed kinds>
-  local k n=0
+  local k n=0 kind name
   for k in robot team user; do
     if cfg_has "$1.$k"; then
       [[ " $2 " == *" $k "* ]] || die "$1: '$k' is not allowed here (allowed: $2)"
@@ -151,21 +153,47 @@ validate_principal() { # validate_principal <path> <allowed kinds>
     fi
   done
   [[ $n == 1 ]] || die "$1 must set exactly one of: $2"
+  local p
+  # principal_of runs in a command substitution, so it must not die itself.
+  p=$(principal_of "$1") || die "$1: the robot form needs both org and name"
+  read -r kind name <<<"$p"
+  [[ $kind != robot ]] || [[ $name =~ $ROBOT_QUALIFIED_RE ]] \
+    || die "$1: '$name' is not a valid robot reference (expected <robot> or <org>+<robot>)"
 }
 
 check_reference() { # check_reference <path> "<declared robots>" "<declared teams>"
   local kind name
+  # validate_principal has already resolved and validated the reference.
   read -r kind name <<<"$(principal_of "$1")"
+  [[ -n $kind ]] || die "$1: cannot resolve the principal"
   case $kind in
-    robot) [[ $2 == *" $name "* ]] || die "$1: robot '$name' is not declared in this organization's robots" ;;
+    # A qualified robot belongs to another organization, so it cannot be checked
+    # against this organization's declarations; Quay validates it on the PUT.
+    robot)
+      [[ $name == *"+"* ]] || [[ $2 == *" $name "* ]] \
+        || die "$1: robot '$name' is not declared in this organization's robots (use <org>+<robot> for another organization)"
+      ;;
     team) [[ $3 == *" $name "* ]] || die "$1: team '$name' is not declared in this organization's teams" ;;
   esac
 }
 
-principal_of() { # prints "<kind> <name>"
-  local k
+# Prints "<kind> <name>". A robot is either a name in this organization or a
+# qualified "<org>+<name>" that may live elsewhere; the {org, name} form is
+# normalized to the qualified string so callers only see one shape.
+principal_of() {
+  local k v
   for k in robot team user; do
-    if cfg_has "$1.$k"; then printf '%s %s' "$k" "$(cfg "$1.$k")"; return 0; fi
+    if cfg_has "$1.$k"; then
+      v=$(cfg "$1.$k")
+      if [[ $k == robot && $(yq e "$1.$k | tag" "$CONFIG") == '!!map' ]]; then
+        local o n
+        o=$(cfg "$1.$k.org") n=$(cfg "$1.$k.name")
+        [[ -n $o && -n $n ]] || return 1
+        v="$o+$n"
+      fi
+      printf '%s %s' "$k" "$v"
+      return 0
+    fi
   done
   return 1
 }

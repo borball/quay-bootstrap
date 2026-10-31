@@ -73,7 +73,9 @@ reconcile_teams() {
     for ((m = 0; m < n_mem; m++)); do
       read -r kind name <<<"$(principal_of "$p.teams[$j].members[$m]")"
       member=$name
-      [[ $kind != robot ]] || member="$org+$name"
+      # A unqualified robot belongs to this organization; a qualified one
+      # ("org+robot") is added as is.
+      [[ $kind != robot || $name == *"+"* ]] || member="$org+$name"
       [[ $members != *" $member "* ]] || continue
       api_expect "200 201" PUT "/api/v1/organization/$org/team/$team/members/$member" '{}'
       log "  added $member to team $team"
@@ -108,10 +110,10 @@ reconcile_repos() {
     for ((x = 0; x < n_perm; x++)); do
       read -r kind name <<<"$(principal_of "$rp.permissions[$x]")"
       role=$(cfg "$rp.permissions[$x].role")
+      [[ $kind != robot || $name == *"+"* ]] || name="$org+$name"
       case $kind in
-        robot) target="user/$org+$name" ;;
-        user) target="user/$name" ;;
         team) target="team/$name" ;;
+        *) target="user/$name" ;;
       esac
       api_expect "200 201" PUT "/api/v1/repository/$org/$repo/permissions/$target" "{\"role\": \"$role\"}"
       debug "  $org/$repo: $kind $name -> $role"
