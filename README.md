@@ -7,7 +7,9 @@ Bootstraps Red Hat Quay on an OpenShift cluster with ODF from a single YAML file
 3. **init**: creates the first superuser through `/api/v1/user/initialize` and stores its password and OAuth token in a Secret.
 4. **content**: creates organizations, robot accounts, teams, repositories, permissions and proxy-cache settings.
 
-Every phase is idempotent: re-running applies only differences.
+Every phase is idempotent: re-running adds what is missing and changes what
+differs. Content removed from the config is not deleted from Quay (see
+[Notes and limitations](#notes-and-limitations)).
 
 ## Requirements
 
@@ -135,4 +137,12 @@ password: {from: generate}   # admin password only; reused from the output Secre
 - `/api/v1/user/initialize` works only on an empty database. If Quay already has users and the output Secret has no working token, create an OAuth token for a superuser in the UI and pass it as `admin.token`.
 - The script manages robot-account tokens. It does not create organization OAuth-application tokens, because generating them needs an interactive authorization step.
 - Changing the config bundle restarts the Quay pods (the operator redeploys them).
+- The content phase only adds and updates. Teams, robots, repositories,
+  permissions and team members that are removed from the config stay in Quay, and
+  nothing reports the difference; remove them in the UI or through the API.
+- `--destroy` removes the Kubernetes objects, not the content: organizations,
+  repositories and robot tokens live in Quay's database. They disappear with the
+  registry (so a `--destroy` that deletes the QuayRegistry takes them along), and
+  they are kept when the registry is kept, as with `registry.external` or a
+  registry this tool did not create.
 - `--destroy` deletes the QuayRegistry (and with it the database PVCs), any OBC it created (and its bucket), its Secrets and Certificates, and the cluster trust entry. It also removes the operator unless `--keep-operator` is set or other QuayRegistries exist. Namespaces are deleted only with `--delete-namespace` and only if this tool created them.
