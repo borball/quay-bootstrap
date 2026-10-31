@@ -88,6 +88,10 @@ organizations:
     robots:
       - ci_push
       - {name: ci_pull, description: read-only pulls for clusters}
+      # rotate: true deletes and recreates a robot that already exists to issue
+      # a new token (Quay returns one only at creation). Consumers of the old
+      # token stop working.
+      - {name: ci_pull_v2, rotate: false}
     teams:
       - name: developers
         role: member             # member | creator | admin

@@ -106,6 +106,10 @@ validate_config() {
       [[ $r =~ $ROBOT_RE ]] || die "$p.robots[$j]: '$r' is not a valid robot name (lowercase letters, digits, _)"
       [[ $robots != *" $r "* ]] || die "$p.robots: '$r' is defined twice"
       robots="$robots$r "
+      if [[ $(yq e "$p.robots[$j] | tag" "$CONFIG") == '!!map' ]]; then
+        local rot; rot=$(cfg "$p.robots[$j].rotate" false)
+        [[ $rot == true || $rot == false ]] || die "$p.robots[$j].rotate must be true or false"
+      fi
     done
 
     local n_team; n_team=$(cfg_len "$p.teams")

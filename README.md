@@ -102,6 +102,7 @@ organizations:
 
 ## Organizations and proxy cache
 
+- A robot token is returned only when the robot is created, so a robot that already exists and has no token in the output Secret is reported rather than silently skipped. Set `rotate: true` on that robot to delete and recreate it and issue a new token; every consumer of the old token then fails.
 - Proxy cache is configured **per organization**. To cache only part of an upstream, narrow the upstream path (`docker.io/library`, `quay.io/prometheus`) and give it its own organization. A proxy-cache organization cannot also define repositories; the config is rejected.
 - Upstream credentials are validated through `validateproxycache` before they are applied. Quay never returns them, so changes are detected through a hash stored in the output Secret.
 - Principals in `members` / `permissions` are `{robot: name}` (org robot), `{user: name}` or `{team: name}`. A robot belonging to another organization is written `{robot: "org+robot"}` or `{robot: {org: org, name: robot}}`; a shared pull robot needs only one credential this way. Teams must be declared in the same organization (`owners` always exists), and so must a robot referred to by its bare name; preflight rejects unknown references but cannot check a qualified robot, so Quay validates those on the PUT.
