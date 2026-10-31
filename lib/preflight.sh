@@ -206,8 +206,34 @@ preflight_cluster() {
   require_cmd oc jq yq curl openssl awk sed base64 sort
   yq --version 2>&1 | grep -q 'mikefarah' || die "yq v4 from https://github.com/mikefarah/yq is required"
   oc whoami >/dev/null 2>&1 || die "not logged in to a cluster; run 'oc login' first"
-  [[ $(oc auth can-i '*' '*' --all-namespaces 2>/dev/null) == yes ]] || die "cluster-admin privileges are required"
+  if [[ ${DESTROY-} == true ]] || phase_enabled operator || phase_enabled registry; then
+    [[ $(oc auth can-i '*' '*' --all-namespaces 2>/dev/null) == yes ]] \
+      || die "cluster-admin privileges are required for the operator and registry phases"
+  else
+    check_content_rbac
+  fi
   log "cluster: $(oc whoami --show-server) (as $(oc whoami))"
+}
+
+# The init and content phases touch a few objects, so check exactly those: they
+# can then run from a service account that manages the registry namespace
+# without holding cluster-admin.
+check_content_rbac() {
+  local missing=''
+  can() { [[ $(oc auth can-i "$@" 2>/dev/null) == yes ]]; }
+
+  # creds_save writes the output secret at the end of the phase; failing there
+  # after the content has been applied is the confusing case worth preventing.
+  can create secret -n "$QB_NS" && can patch secret -n "$QB_NS" \
+    || missing+=$'\n  - create and patch secrets in '"$QB_NS"
+  if [[ -z ${QUAY_HOST-} ]]; then
+    can get quayregistries.quay.redhat.com -n "$QB_NS" \
+      || missing+=$'\n  - get quayregistries.quay.redhat.com in '"$QB_NS"' (registry.hostname is unset)'
+  fi
+  [[ -z $missing ]] || die "insufficient permissions for the init and content phases:$missing"
+  # Optional: without it API calls fall back to the system trust store.
+  can get configmaps/default-ingress-cert -n openshift-config-managed \
+    || warn "cannot read configmaps/default-ingress-cert in openshift-config-managed; API calls will use the system trust store"
 }
 
 preflight() {

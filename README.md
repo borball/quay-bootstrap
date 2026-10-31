@@ -11,7 +11,12 @@ Every phase is idempotent: re-running applies only differences.
 
 ## Requirements
 
-- `oc` logged in as cluster-admin, plus `jq` (1.6+), `yq` v4 ([mikefarah](https://github.com/mikefarah/yq)), `curl`, `openssl`
+- `oc` logged in to the cluster, plus `jq` (1.6+), `yq` v4 ([mikefarah](https://github.com/mikefarah/yq)), `curl`, `openssl`
+  - cluster-admin is required for the `operator`, `registry` and `--destroy` paths;
+  - `--phase init` and `--phase content` need only `create` and `patch` on Secrets in
+    `registry.namespace`, plus `get` on QuayRegistries there when `registry.hostname`
+    is unset. Preflight checks exactly those, so these phases can run from a service
+    account that manages the registry namespace.
 - bash 3.2+ (works with the macOS default)
 - ODF installed; NooBaa (MCG) Ready for the default managed object storage
 - Connected cluster (`redhat-operators` catalog reachable)
