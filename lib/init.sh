@@ -49,7 +49,12 @@ resolve_config_token() {
 # Callers must run creds_load and resolve_config_token first.
 load_admin_token() {
   local t
-  [[ -z ${QUAY_TOKEN-} ]] || return 0
+  if [[ -n ${QUAY_TOKEN-} ]]; then
+    # A token supplied from outside (admin.token, or the environment) is used as-is, but
+    # the header file still has to be written: api() sends it as -H @file.
+    set_token "$QUAY_TOKEN"
+    return 0
+  fi
   if [[ -n $CONFIG_TOKEN ]]; then
     if token_valid "$CONFIG_TOKEN"; then debug "using admin.token from config"; return 0; fi
     warn "admin.token from the config was rejected by Quay (HTTP $API_STATUS)"
