@@ -88,12 +88,20 @@ organizations:
     robots:
       - ci_push
       - {name: ci_pull, description: read-only pulls for clusters}
+      # rotate: true deletes and recreates a robot that already exists to issue
+      # a new token (Quay returns one only at creation). Consumers of the old
+      # token stop working.
+      - {name: ci_pull_v2, rotate: false}
     teams:
       - name: developers
         role: member             # member | creator | admin
         members:
           - {robot: ci_push}
           - {user: quayadmin}
+          # A robot owned by another organization; either form works. One pull
+          # robot can read from several organizations this way.
+          - {robot: "shared-registry+cluster_pull"}
+          - {robot: {org: shared-registry, name: cluster_pull}}
     repositories:
       - name: app1
         visibility: private      # private | public

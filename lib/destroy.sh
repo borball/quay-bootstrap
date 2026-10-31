@@ -7,9 +7,19 @@ destroy_all() {
   local sel="$MANAGED_BY_KEY=$MANAGED_BY_VALUE" host=$QUAY_HOST kind
 
   if registry_exists; then
-    [[ -n $host ]] || { discover_endpoint 2>/dev/null && host=$QUAY_HOST; } || true
-    log "deleting QuayRegistry (the operator removes its deployments and PVCs)"
-    run oc delete quayregistries.quay.redhat.com "$QB_NAME" -n "$QB_NS" --wait=true --timeout=15m
+    # Deleting a registry takes its database and bucket with it, so only do it
+    # when this tool installed it. registry.external marks a registry we were
+    # merely pointed at; an unlabelled one predates us.
+    [[ ${REGISTRY_EXTERNAL-} != true ]] \
+      || die "registry.external is true: refusing to delete QuayRegistry $QB_NS/$QB_NAME (drop registry.external if you really own it)"
+    if registry_managed; then
+      [[ -n $host ]] || { discover_endpoint 2>/dev/null && host=$QUAY_HOST; } || true
+      log "deleting QuayRegistry (the operator removes its deployments and PVCs)"
+      run oc delete quayregistries.quay.redhat.com "$QB_NAME" -n "$QB_NS" --wait=true --timeout=15m
+    else
+      warn "QuayRegistry $QB_NS/$QB_NAME was not created by quay-bootstrap; keeping it and its storage"
+      host=''
+    fi
   fi
 
   for kind in objectbucketclaims.objectbucket.io certificates.cert-manager.io secrets; do

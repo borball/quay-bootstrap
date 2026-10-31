@@ -40,19 +40,37 @@ reconcile_org() {
 }
 
 reconcile_robots() {
-  local p=$1 org=$2 j n name desc token
+  local p=$1 org=$2 j n name desc rotate exists token
   n=$(cfg_len "$p.robots")
   for ((j = 0; j < n; j++)); do
     name=$(robot_name "$p.robots[$j]")
-    desc=''
-    [[ $(yq e "$p.robots[$j] | tag" "$CONFIG") != '!!map' ]] || desc=$(cfg "$p.robots[$j].description")
+    desc='' rotate=false
+    if [[ $(yq e "$p.robots[$j] | tag" "$CONFIG") == '!!map' ]]; then
+      desc=$(cfg "$p.robots[$j].description")
+      rotate=$(cfg "$p.robots[$j].rotate" false)
+    fi
     api GET "/api/v1/organization/$org/robots/$name"
-    if [[ $API_STATUS != 200 ]]; then
+    exists=true
+    [[ $API_STATUS == 200 ]] || exists=false
+    if [[ $exists == true && $rotate == true ]]; then
+      # Quay returns a token only when the robot is created, so reissuing one
+      # means deleting the robot. Everything still using the old token breaks.
+      warn "robot $org+$name: rotate is set, reissuing its token (consumers of the old token will fail)"
+      api_expect "200 201 204" DELETE "/api/v1/organization/$org/robots/$name"
+      exists=false
+    fi
+    if [[ $exists == false ]]; then
       api_expect "200 201" PUT "/api/v1/organization/$org/robots/$name" "$(jq -n --arg d "$desc" '{description: $d}')"
       log "  created robot $org+$name"
+      token=$(jq -r '.token // empty' <<<"$API_BODY")
+      if [[ -n $token ]]; then
+        creds_set "robot.$org.$name" "$token"
+      else
+        warn "Quay returned no token for $org+$name; it is missing from secret $QB_NS/$CREDS_SECRET"
+      fi
+    elif [[ -z $(creds_get "robot.$org.$name") ]]; then
+      warn "robot $org+$name exists but its token is not in secret $QB_NS/$CREDS_SECRET; set 'rotate: true' on it to reissue (the current token then stops working)"
     fi
-    token=$(jq -r '.token // empty' <<<"$API_BODY")
-    [[ -z $token ]] || creds_set "robot.$org.$name" "$token"
   done
 }
 
@@ -73,7 +91,9 @@ reconcile_teams() {
     for ((m = 0; m < n_mem; m++)); do
       read -r kind name <<<"$(principal_of "$p.teams[$j].members[$m]")"
       member=$name
-      [[ $kind != robot ]] || member="$org+$name"
+      # A unqualified robot belongs to this organization; a qualified one
+      # ("org+robot") is added as is.
+      [[ $kind != robot || $name == *"+"* ]] || member="$org+$name"
       [[ $members != *" $member "* ]] || continue
       api_expect "200 201" PUT "/api/v1/organization/$org/team/$team/members/$member" '{}'
       log "  added $member to team $team"
@@ -108,10 +128,10 @@ reconcile_repos() {
     for ((x = 0; x < n_perm; x++)); do
       read -r kind name <<<"$(principal_of "$rp.permissions[$x]")"
       role=$(cfg "$rp.permissions[$x].role")
+      [[ $kind != robot || $name == *"+"* ]] || name="$org+$name"
       case $kind in
-        robot) target="user/$org+$name" ;;
-        user) target="user/$name" ;;
         team) target="team/$name" ;;
+        *) target="user/$name" ;;
       esac
       api_expect "200 201" PUT "/api/v1/repository/$org/$repo/permissions/$target" "{\"role\": \"$role\"}"
       debug "  $org/$repo: $kind $name -> $role"

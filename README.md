@@ -7,11 +7,18 @@ Bootstraps Red Hat Quay on an OpenShift cluster with ODF from a single YAML file
 3. **init**: creates the first superuser through `/api/v1/user/initialize` and stores its password and OAuth token in a Secret.
 4. **content**: creates organizations, robot accounts, teams, repositories, permissions and proxy-cache settings.
 
-Every phase is idempotent: re-running applies only differences.
+Every phase is idempotent: re-running adds what is missing and changes what
+differs. Content removed from the config is not deleted from Quay (see
+[Notes and limitations](#notes-and-limitations)).
 
 ## Requirements
 
-- `oc` logged in as cluster-admin, plus `jq` (1.6+), `yq` v4 ([mikefarah](https://github.com/mikefarah/yq)), `curl`, `openssl`
+- `oc` logged in to the cluster, plus `jq` (1.6+), `yq` v4 ([mikefarah](https://github.com/mikefarah/yq)), `curl`, `openssl`
+  - cluster-admin is required for the `operator`, `registry` and `--destroy` paths;
+  - `--phase init` and `--phase content` need only `create` and `patch` on Secrets in
+    `registry.namespace`, plus `get` on QuayRegistries there when `registry.hostname`
+    is unset. Preflight checks exactly those, so these phases can run from a service
+    account that manages the registry namespace.
 - bash 3.2+ (works with the macOS default)
 - ODF installed; NooBaa (MCG) Ready for the default managed object storage
 - Connected cluster (`redhat-operators` catalog reachable)
@@ -75,11 +82,37 @@ See [`examples/reference.yaml`](examples/reference.yaml) for every option.
   3. `s3`: explicit endpoint and credentials (`S3Storage`, `RadosGWStorage` or `RHOCSStorage`).
 - **Block storage** (managed postgres / clair-postgres PVCs) uses the cluster's default StorageClass; the operator has no per-component StorageClass setting. If no default exists, `storage.block.storageClass`, then `ocs-storagecluster-ceph-rbd`, then the first StorageClass is marked default (`setDefaultIfMissing: true`). Volume sizes are set with `postgresVolumeSize` / `clairPostgresVolumeSize`.
 
+## An existing registry
+
+Set `registry.external: true` when the QuayRegistry already exists and this tool
+only manages what lives inside it:
+
+```yaml
+registry:
+  name: proxy              # the existing QuayRegistry, in registry.namespace
+  namespace: registry
+  external: true
+  tls: {mode: ingress}     # ingress reads the CA from default-ingress-cert
+admin:
+  token: {from: env:QUAY_TOKEN}
+organizations:
+  - name: platform
+```
+
+- Only the `init` and `content` phases may run; the `operator` and `registry`
+  phases change the installation, so they are refused.
+- `registry.hostname` is optional: the endpoint is read from the QuayRegistry's
+  `status.registryEndpoint`.
+- `--destroy` refuses to run against an external registry.
+- The content phase still needs a few cluster permissions; see
+  [Requirements](#requirements).
+
 ## Organizations and proxy cache
 
+- A robot token is returned only when the robot is created, so a robot that already exists and has no token in the output Secret is reported rather than silently skipped. Set `rotate: true` on that robot to delete and recreate it and issue a new token; every consumer of the old token then fails.
 - Proxy cache is configured **per organization**. To cache only part of an upstream, narrow the upstream path (`docker.io/library`, `quay.io/prometheus`) and give it its own organization. A proxy-cache organization cannot also define repositories; the config is rejected.
 - Upstream credentials are validated through `validateproxycache` before they are applied. Quay never returns them, so changes are detected through a hash stored in the output Secret.
-- Principals in `members` / `permissions` are `{robot: name}` (org robot), `{user: name}` or `{team: name}`. Robots and teams must be declared in the same organization (`owners` always exists); preflight rejects unknown references.
+- Principals in `members` / `permissions` are `{robot: name}` (org robot), `{user: name}` or `{team: name}`. A robot belonging to another organization is written `{robot: "org+robot"}` or `{robot: {org: org, name: robot}}`; a shared pull robot needs only one credential this way. Teams must be declared in the same organization (`owners` always exists), and so must a robot referred to by its bare name; preflight rejects unknown references but cannot check a qualified robot, so Quay validates those on the PUT.
 
 ## Secrets in the config file
 
@@ -104,4 +137,12 @@ password: {from: generate}   # admin password only; reused from the output Secre
 - `/api/v1/user/initialize` works only on an empty database. If Quay already has users and the output Secret has no working token, create an OAuth token for a superuser in the UI and pass it as `admin.token`.
 - The script manages robot-account tokens. It does not create organization OAuth-application tokens, because generating them needs an interactive authorization step.
 - Changing the config bundle restarts the Quay pods (the operator redeploys them).
+- The content phase only adds and updates. Teams, robots, repositories,
+  permissions and team members that are removed from the config stay in Quay, and
+  nothing reports the difference; remove them in the UI or through the API.
+- `--destroy` removes the Kubernetes objects, not the content: organizations,
+  repositories and robot tokens live in Quay's database. They disappear with the
+  registry (so a `--destroy` that deletes the QuayRegistry takes them along), and
+  they are kept when the registry is kept, as with `registry.external` or a
+  registry this tool did not create.
 - `--destroy` deletes the QuayRegistry (and with it the database PVCs), any OBC it created (and its bucket), its Secrets and Certificates, and the cluster trust entry. It also removes the operator unless `--keep-operator` is set or other QuayRegistries exist. Namespaces are deleted only with `--delete-namespace` and only if this tool created them.

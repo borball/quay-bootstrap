@@ -3,6 +3,8 @@
 
 NAME_RE='^[a-z0-9]+([._-][a-z0-9]+)*$'
 ROBOT_RE='^[a-z][a-z0-9_]{1,254}$'
+# A robot owned by another organization is written "<org>+<robot>".
+ROBOT_QUALIFIED_RE='^([a-z0-9]+([._-][a-z0-9]+)*\+)?[a-z][a-z0-9_]{1,254}$'
 TEAM_RE='^[a-z][a-z0-9]+$'
 COMPONENT_KINDS="clair clairpostgres postgres redis objectstorage route tls horizontalpodautoscaler mirror monitoring quay"
 
@@ -21,6 +23,7 @@ load_config() {
   QB_NS=$(cfg .registry.namespace quay-enterprise)
   QUAY_HOST=$(cfg .registry.hostname)
   ROUTE_MANAGED=$(cfg .registry.route.managed true)
+  REGISTRY_EXTERNAL=$(cfg .registry.external false)
   TLS_MODE=$(cfg .registry.tls.mode ingress)
   MIN_VALID_DAYS=$(cfg .registry.tls.minValidDays 30)
   CONFIG_SECRET="${QB_NAME}-config-bundle"
@@ -37,9 +40,14 @@ load_config() {
 
 validate_config() {
   local b
-  for b in "$ROUTE_MANAGED" "$API_INSECURE"; do
+  for b in "$ROUTE_MANAGED" "$REGISTRY_EXTERNAL" "$API_INSECURE"; do
     [[ $b == true || $b == false ]] || die "boolean expected, got '$b'"
   done
+  # An external registry is one this tool was pointed at, not one it installed:
+  # the operator and registry phases would change it, so they are refused.
+  if [[ $REGISTRY_EXTERNAL == true ]] && { phase_enabled operator || phase_enabled registry; }; then
+    die "registry.external is true: run only the init and content phases (the operator and registry phases change the Quay installation)"
+  fi
   [[ $OPERATOR_TIMEOUT =~ ^[0-9]+$ && $REGISTRY_TIMEOUT =~ ^[0-9]+$ && $MIN_VALID_DAYS =~ ^[0-9]+$ ]] \
     || die "timeouts and registry.tls.minValidDays must be integers"
   [[ $ADMIN_USER =~ $NAME_RE ]] || die "admin.username '$ADMIN_USER' is not a valid Quay username"
@@ -98,6 +106,10 @@ validate_config() {
       [[ $r =~ $ROBOT_RE ]] || die "$p.robots[$j]: '$r' is not a valid robot name (lowercase letters, digits, _)"
       [[ $robots != *" $r "* ]] || die "$p.robots: '$r' is defined twice"
       robots="$robots$r "
+      if [[ $(yq e "$p.robots[$j] | tag" "$CONFIG") == '!!map' ]]; then
+        local rot; rot=$(cfg "$p.robots[$j].rotate" false)
+        [[ $rot == true || $rot == false ]] || die "$p.robots[$j].rotate must be true or false"
+      fi
     done
 
     local n_team; n_team=$(cfg_len "$p.teams")
@@ -137,7 +149,7 @@ robot_name() { # robots may be plain strings or {name, description}
 }
 
 validate_principal() { # validate_principal <path> <allowed kinds>
-  local k n=0
+  local k n=0 kind name
   for k in robot team user; do
     if cfg_has "$1.$k"; then
       [[ " $2 " == *" $k "* ]] || die "$1: '$k' is not allowed here (allowed: $2)"
@@ -145,21 +157,47 @@ validate_principal() { # validate_principal <path> <allowed kinds>
     fi
   done
   [[ $n == 1 ]] || die "$1 must set exactly one of: $2"
+  local p
+  # principal_of runs in a command substitution, so it must not die itself.
+  p=$(principal_of "$1") || die "$1: the robot form needs both org and name"
+  read -r kind name <<<"$p"
+  [[ $kind != robot ]] || [[ $name =~ $ROBOT_QUALIFIED_RE ]] \
+    || die "$1: '$name' is not a valid robot reference (expected <robot> or <org>+<robot>)"
 }
 
 check_reference() { # check_reference <path> "<declared robots>" "<declared teams>"
   local kind name
+  # validate_principal has already resolved and validated the reference.
   read -r kind name <<<"$(principal_of "$1")"
+  [[ -n $kind ]] || die "$1: cannot resolve the principal"
   case $kind in
-    robot) [[ $2 == *" $name "* ]] || die "$1: robot '$name' is not declared in this organization's robots" ;;
+    # A qualified robot belongs to another organization, so it cannot be checked
+    # against this organization's declarations; Quay validates it on the PUT.
+    robot)
+      [[ $name == *"+"* ]] || [[ $2 == *" $name "* ]] \
+        || die "$1: robot '$name' is not declared in this organization's robots (use <org>+<robot> for another organization)"
+      ;;
     team) [[ $3 == *" $name "* ]] || die "$1: team '$name' is not declared in this organization's teams" ;;
   esac
 }
 
-principal_of() { # prints "<kind> <name>"
-  local k
+# Prints "<kind> <name>". A robot is either a name in this organization or a
+# qualified "<org>+<name>" that may live elsewhere; the {org, name} form is
+# normalized to the qualified string so callers only see one shape.
+principal_of() {
+  local k v
   for k in robot team user; do
-    if cfg_has "$1.$k"; then printf '%s %s' "$k" "$(cfg "$1.$k")"; return 0; fi
+    if cfg_has "$1.$k"; then
+      v=$(cfg "$1.$k")
+      if [[ $k == robot && $(yq e "$1.$k | tag" "$CONFIG") == '!!map' ]]; then
+        local o n
+        o=$(cfg "$1.$k.org") n=$(cfg "$1.$k.name")
+        [[ -n $o && -n $n ]] || return 1
+        v="$o+$n"
+      fi
+      printf '%s %s' "$k" "$v"
+      return 0
+    fi
   done
   return 1
 }
@@ -168,8 +206,34 @@ preflight_cluster() {
   require_cmd oc jq yq curl openssl awk sed base64 sort
   yq --version 2>&1 | grep -q 'mikefarah' || die "yq v4 from https://github.com/mikefarah/yq is required"
   oc whoami >/dev/null 2>&1 || die "not logged in to a cluster; run 'oc login' first"
-  [[ $(oc auth can-i '*' '*' --all-namespaces 2>/dev/null) == yes ]] || die "cluster-admin privileges are required"
+  if [[ ${DESTROY-} == true ]] || phase_enabled operator || phase_enabled registry; then
+    [[ $(oc auth can-i '*' '*' --all-namespaces 2>/dev/null) == yes ]] \
+      || die "cluster-admin privileges are required for the operator and registry phases"
+  else
+    check_content_rbac
+  fi
   log "cluster: $(oc whoami --show-server) (as $(oc whoami))"
+}
+
+# The init and content phases touch a few objects, so check exactly those: they
+# can then run from a service account that manages the registry namespace
+# without holding cluster-admin.
+check_content_rbac() {
+  local missing=''
+  can() { [[ $(oc auth can-i "$@" 2>/dev/null) == yes ]]; }
+
+  # creds_save writes the output secret at the end of the phase; failing there
+  # after the content has been applied is the confusing case worth preventing.
+  can create secret -n "$QB_NS" && can patch secret -n "$QB_NS" \
+    || missing+=$'\n  - create and patch secrets in '"$QB_NS"
+  if [[ -z ${QUAY_HOST-} ]]; then
+    can get quayregistries.quay.redhat.com -n "$QB_NS" \
+      || missing+=$'\n  - get quayregistries.quay.redhat.com in '"$QB_NS"' (registry.hostname is unset)'
+  fi
+  [[ -z $missing ]] || die "insufficient permissions for the init and content phases:$missing"
+  # Optional: without it API calls fall back to the system trust store.
+  can get configmaps/default-ingress-cert -n openshift-config-managed \
+    || warn "cannot read configmaps/default-ingress-cert in openshift-config-managed; API calls will use the system trust store"
 }
 
 preflight() {
