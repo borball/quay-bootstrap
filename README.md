@@ -113,6 +113,17 @@ organizations:
 - Proxy cache is configured **per organization**. To cache only part of an upstream, narrow the upstream path (`docker.io/library`, `quay.io/prometheus`) and give it its own organization. A proxy-cache organization cannot also define repositories; the config is rejected.
 - Upstream credentials are validated through `validateproxycache` before they are applied. Quay never returns them, so changes are detected through a hash stored in the output Secret.
 - Principals in `members` / `permissions` are `{robot: name}` (org robot), `{user: name}` or `{team: name}`. A robot belonging to another organization is written `{robot: "org+robot"}` or `{robot: {org: org, name: robot}}`; a shared pull robot needs only one credential this way. Teams must be declared in the same organization (`owners` always exists), and so must a robot referred to by its bare name; preflight rejects unknown references but cannot check a qualified robot, so Quay validates those on the PUT.
+- Membership grants no repository permission on its own. A team that must read repositories another tool creates later (a mirror filling an organization after this phase) needs `defaultPermission`:
+
+  ```yaml
+  teams:
+    - name: pull
+      role: member
+      defaultPermission: read   # read, write or admin
+      members: [{robot: mirror_pull}]
+  ```
+
+  It registers the team as an organization prototype and then sets the role on the repositories that already exist, so a re-run repairs an organization populated before the prototype. Quay applies a prototype only to repositories created by its *activating* user, and this endpoint binds it to the token owner, so content another identity pushes — a robot filling a mirror organization — is covered by the sweep instead: re-run the content phase after that push. The sweep costs one API call per repository, which is why it is only done for teams that declare the key.
 
 ## Secrets in the config file
 
