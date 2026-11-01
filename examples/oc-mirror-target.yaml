@@ -1,0 +1,63 @@
+# A destination organization for `oc-mirror` instead of a pull-through proxy cache.
+#
+# A proxy-cache organization fetches from upstream on demand, so a cache miss
+# needs connectivity and cached tags expire on their timer. An organization
+# filled by oc-mirror holds the content itself: nothing expires, and after the
+# mirror run the spokes never reach upstream. One robot pushes and one robot
+# pulls; content the pull robot cannot see is content a cluster cannot install.
+#
+#   quay-bootstrap.sh -c examples/oc-mirror-target.yaml
+#   oc-mirror --v2 --config imagesetconfiguration.yaml \
+#     --authfile auth.json docker://quay.<apps domain>/ocmirror
+#
+# auth.json for the mirror run carries the push robot, whose token this tool
+# writes to the output secret:
+#
+#   host="quay.<apps domain>"
+#   user="ocmirror+mirror_push"
+#   token=$(oc get secret quay-bootstrap-creds -n quay-enterprise \
+#     -o jsonpath='{.data.robot\.ocmirror\.mirror_push}' | base64 -d)
+#   jq -n --arg h "$host" --arg u "$user" --arg t "$token" \
+#     '{auths: {($h): {auth: (($u + ":" + $t) | @base64)}}}' > auth.json
+#
+# The spoke pull secret carries the pull robot the same way. A mirror run is
+# differential, so re-run `--phase content` after it: see the pull team below.
+registry:
+  hostname: quay                         # -> quay.<apps domain>
+  tls:
+    mode: ingress
+    trust:
+      cluster: true
+
+admin:
+  username: quayadmin
+  email: quayadmin@example.com
+
+organizations:
+  - name: ocmirror
+    robots:
+      - {name: mirror_push, description: oc-mirror destination; creates repositories}
+      - {name: mirror_pull, description: read-only pulls for clusters}
+    teams:
+      # oc-mirror creates the repositories as it copies, so the push robot has
+      # to be able to create them: admin on the organization, not on a
+      # repository that does not exist yet.
+      - name: push
+        role: admin
+        members:
+          - {robot: mirror_push}
+      # The spokes read what the push robot created, which is later than this
+      # phase. Membership alone grants nothing, so `defaultPermission` sets the
+      # role on the repositories that already exist and registers the team as
+      # an organization prototype for the ones created later.
+      #
+      # Quay applies a prototype only to repositories created by its activating
+      # user, and this endpoint binds it to the token owner, while oc-mirror
+      # pushes as a robot. So for mirrored content the sweep is what grants
+      # access: re-run `--phase content` after the mirror run, and it covers
+      # everything that run created. Both steps are idempotent.
+      - name: pull
+        role: member
+        defaultPermission: read          # read | write | admin
+        members:
+          - {robot: mirror_pull}

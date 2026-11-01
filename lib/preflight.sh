@@ -120,6 +120,8 @@ validate_config() {
       teams="$teams$t "
       local role; role=$(cfg "$p.teams[$j].role" member)
       [[ $role =~ ^(member|creator|admin)$ ]] || die "$p.teams[$j].role must be member, creator or admin"
+      local dflt; dflt=$(cfg "$p.teams[$j].defaultPermission")
+      [[ -z $dflt || $dflt =~ ^(read|write|admin)$ ]] || die "$p.teams[$j].defaultPermission must be read, write or admin"
       local m n_mem; n_mem=$(cfg_len "$p.teams[$j].members")
       for ((m = 0; m < n_mem; m++)); do
         validate_principal "$p.teams[$j].members[$m]" "robot user"
