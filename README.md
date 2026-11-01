@@ -124,6 +124,7 @@ organizations:
   ```
 
   It registers the team as an organization prototype and then sets the role on the repositories that already exist, so a re-run repairs an organization populated before the prototype. Quay applies a prototype only to repositories created by its *activating* user, and this endpoint binds it to the token owner, so content another identity pushes — a robot filling a mirror organization — is covered by the sweep instead: re-run the content phase after that push. The sweep costs one API call per repository, which is why it is only done for teams that declare the key.
+- [`examples/oc-mirror-target.yaml`](examples/oc-mirror-target.yaml) is a worked `oc-mirror` destination: a normal organization, a push robot with organization admin, and a pull team with `defaultPermission`. [`examples/openshift-proxy-cache.yaml`](examples/openshift-proxy-cache.yaml) is the pull-through equivalent, one proxy-cache organization per upstream. The two are alternatives, not layers: a proxy-cache organization cannot also hold repositories, so mirror into an organization of its own.
 
 ## Secrets in the config file
 
