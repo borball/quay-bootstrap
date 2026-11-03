@@ -75,7 +75,7 @@ reconcile_robots() {
 }
 
 reconcile_teams() {
-  local p=$1 org=$2 j m n n_mem team role members kind name member
+  local p=$1 org=$2 j m n n_mem team role members kind name member default
   n=$(cfg_len "$p.teams")
   for ((j = 0; j < n; j++)); do
     team=$(cfg "$p.teams[$j].name")
@@ -98,7 +98,51 @@ reconcile_teams() {
       api_expect "200 201" PUT "/api/v1/organization/$org/team/$team/members/$member" '{}'
       log "  added $member to team $team"
     done
+
+    default=$(cfg "$p.teams[$j].defaultPermission")
+    [[ -z $default ]] || reconcile_team_default_permission "$org" "$team" "$default"
   done
+}
+
+# Team membership grants nothing by itself, and the repositories a mirror fills
+# in are usually created after this phase. Registering the team as an
+# organization prototype gives it the role on the repositories created from now
+# on *by the same user the API call runs as*; Quay applies prototypes per
+# creating user, and this endpoint always binds it to the token owner. The
+# sweep then covers every repository that already exists, so re-running the
+# content phase after a mirror has pushed its content grants the team read on
+# it. Repositories pushed by another identity, such as a robot, need that
+# re-run: only an organization-wide prototype reaches them, which the API
+# cannot create.
+reconcile_team_default_permission() { # <org> <team> <role>
+  local org=$1 team=$2 role=$3 payload page names repo seen=0 granted=0
+  # The delegate kind travels inside `delegate`; without it Quay cannot tell a
+  # team from a user and rejects the request as having no delegate.
+  payload=$(jq -n --arg r "$role" --arg t "$team" '{role: $r, delegate: {name: $t, kind: "team"}}')
+  api POST "/api/v1/organization/$org/prototypes" "$payload"
+  case $API_STATUS in
+    200 | 201) log "  team $team: default $role for repositories the API user creates" ;;
+    400) debug "  team $team: default $role is already registered ($(api_error))" ;;
+    *) die "prototype $team -> $role for $org failed (HTTP $API_STATUS): $(api_error)" ;;
+  esac
+
+  page=1
+  while :; do
+    api GET "/api/v1/repository?namespace=$org&starred=false&limit=1000&page=$page"
+    [[ $API_STATUS == 200 ]] || die "listing repositories of $org failed (HTTP $API_STATUS): $(api_error)"
+    names=$(jq -r '.repositories[]?.name' <<<"$API_BODY")
+    [[ -n $names ]] || break
+    while IFS= read -r repo; do
+      [[ -n $repo ]] || continue
+      seen=$((seen + 1))
+      api_expect "200 201 204" PUT "/api/v1/repository/$org/$repo/permissions/team/$team" \
+        "$(jq -n --arg r "$role" '{role: $r}')"
+      granted=$((granted + 1))
+    done <<<"$names"
+    page=$((page + 1))
+    ((page <= 20)) || break
+  done
+  log "  team $team: $role on $granted of $seen existing repositories"
 }
 
 reconcile_repos() {

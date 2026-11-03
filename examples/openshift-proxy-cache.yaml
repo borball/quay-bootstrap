@@ -5,6 +5,11 @@
 #   registry.connect.redhat.com/intel    -> quay.<apps domain>/redhat-connect/intel
 #   quay.io/openshift-release-dev        -> quay.<apps domain>/quay-io/openshift-release-dev
 #   export RH_REGISTRY_USER=... RH_REGISTRY_TOKEN=...   (registry.redhat.io service account)
+#
+# Each organization below declares its own `sno_pull` robot, so a cluster needs
+# one credential per organization. To hand out a single credential instead,
+# keep the robot in one organization and add it to the others by qualified
+# name: members: [{robot: "quay-io+sno_pull"}].
 registry:
   hostname: quay                         # -> quay.<apps domain>
   tls:
